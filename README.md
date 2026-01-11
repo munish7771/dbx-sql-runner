@@ -3,10 +3,11 @@
 A lightweight, library-first SQL transformation tool for Databricks SQL, inspired by DBT.
 
 ## Features
-- **Library-First Architecture**: Designed to be imported and orchestrated via Python scripts (e.g., in Databricks Jobs or Airflow).
-- **YAML Configuration**: standard `profiles.yml` configuration management.
-- **DAG Resolution**: Automatically resolves dependencies between SQL models (views/tables) using `networkx`.
-- **Lightweight**: Minimal overhead, using `databricks-sql-connector`.
+
+- **Simple SQL Models**: Just write `.sql` files. No complex boilerplate.
+- **Automated Dependency Management**: Reference other models using `{upstream_model}` and let the runner build the DAG for you.
+- **Environment Aware**: Seamlessly switch between Dev and Prod using `profiles.yml` and Environment Variables.
+- **Library Design**: Import `dbx_sql_runner` in your Python scripts (great for Airflow/Databricks Jobs) or run it via CLI.
 
 ## Installation
 
@@ -30,13 +31,31 @@ Create a `profiles.yml` file to store your credentials. **Do not commit this fil
 ```yaml
 server_hostname: "dbc-xxxxxxxx-xxxx.cloud.databricks.com"
 http_path: "/sql/1.0/warehouses/xxxxxxxxxxxxxxxx"
-access_token: "dapi..."
+access_token: "${DBX_ACCESS_TOKEN}"  # Use env vars for security!
+catalog: "my_catalog"
+schema: "my_schema"
+sources:
+    my_source: "prod_catalog.schema.table"
 ```
 
 ## Usage
 
-### 1. Python (Recommended)
-The preferred way to run your project is by creating a `build.py` script. This gives you full control over the execution environment.
+### 1. CLI (Easiest)
+Run your project from the command line. By default, it looks for `profiles.yml` in the current directory.
+
+```bash
+# Run with default profile (profiles.yml)
+dbx-sql-runner run
+
+# Run with custom profile
+dbx-sql-runner run --profile my_config.yml
+
+# Preview execution plan
+dbx-sql-runner build
+```
+
+### 2. Python (Advanced)
+For fine-grained control (e.g., inside a Databricks Job):
 
 ```python
 from dbx_sql_runner.api import run_project
@@ -45,38 +64,30 @@ from dbx_sql_runner.api import run_project
 run_project(models_dir="models", config_path="profiles.yml")
 ```
 
-Run it via:
-```bash
-python build.py
-```
-
-### 2. CLI
-You can also run the project directly from the command line:
-
-```bash
-dbx-sql-runner --models-dir ./models --profile profiles.yml
-```
-
 ## Project Structure
 ```text
 .
 ├── models/                  # SQL files (.sql)
 │   └── example.sql
 ├── dbx_sql_runner/          # Library source code
+│   ├── adapters/            # Database Adapters
+│   ├── project.py           # Model Loading & DAG
+│   └── runner.py            # Execution Orchestrator
 ├── profiles.yml             # Configuration (gitignored)
-├── build.py                 # Build script
 ├── pyproject.toml           # Project metadata
 └── README.md
 ```
 
 ## Defining Models
-Create `.sql` files in your `models/` directory. Use header comments to define metadata.
+Create `.sql` files in your `models/` directory. 
+- Use header comments for metadata.
+- Use `{upstream_model}` syntax for references (automatically infers dependency).
 
 ```sql
 -- name: my_table
 -- materialized: table
--- depends_on: source_view
+-- partition_by: date, region
 
-SELECT * FROM source_view
+SELECT * FROM {source_view}
 WHERE id > 100
 ```

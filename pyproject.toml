@@ -1,17 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "dbx-sql-runner"
 version = "0.1.0"
 description = "A lightweight SQL transformation tool for Databricks SQL"
 authors = [{ name = "Sharma", email = "munish7771@gmail.com" }]
-dependencies = [
-    "networkx",
-    "databricks-sql-connector[pyarrow]",
-    "PyYAML"
-]
 readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "networkx>=3.0",
+    "databricks-sql-connector[pyarrow]>=3.0",
+    "PyYAML>=6.0"
+]
 
 [project.scripts]
 dbx-sql-runner = "dbx_sql_runner.cli:main"
 
-[tool.setuptools]
-packages = ["dbx_sql_runner"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dbx_sql_runner*"]
