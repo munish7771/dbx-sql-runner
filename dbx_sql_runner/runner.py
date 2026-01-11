@@ -15,21 +15,21 @@ class DbxRunner:
         self.staging_schema = f"{self.schema}_staging"
 
     def run(self, preview=False):
-        # 1. Load and Sort Models
+        # Load and Sort Models
         models = self.loader.load_models()
         graph = DependencyGraph(models)
         sorted_models = graph.get_execution_order()
         
         print(f"Found {len(sorted_models)} models.")
         
-        # 2. Get Metadata / Context
+        # Get Metadata / Context
         all_meta = self.adapter.get_metadata(self.catalog, self.schema)
         
-        # 3. Generate Execution ID (Incremental)
+        # Generate Execution ID (Incremental)
         execution_id = self.adapter.get_next_execution_id(self.catalog, self.schema)
         print(f"Run Execution ID: {execution_id}")
 
-        # 4. Plan Execution
+        # Plan Execution
         execution_plan = []
         context_map = {} # model_name -> fqn (target or staging)
         model_map = {m.name: m for m in models}
@@ -67,7 +67,7 @@ class DbxRunner:
         if preview:
             return
 
-        # 5. Execute
+        # Execute
         self.adapter.ensure_schema_exists(self.catalog, self.staging_schema)
         
         try:
@@ -79,7 +79,7 @@ class DbxRunner:
                 print(f"Building {model.name} in Staging...")
                 self._execute_model(model, context_map, self.staging_schema)
                 
-            # 6. Promote / Atomic Swap
+            # Promote / Atomic Swap
             print("Promoting successful models to Target...")
             for item in execution_plan:
                 if item['action'] == "SKIP":
