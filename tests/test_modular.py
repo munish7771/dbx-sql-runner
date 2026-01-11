@@ -29,12 +29,6 @@ class MockAdapter(BaseAdapter):
     def update_metadata(self, catalog, schema, model_name, sql_hash, materialized, execution_id):
         pass
         
-    def ensure_schema_exists(self, catalog, schema):
-        pass
-
-    def drop_schema_cascade(self, catalog, schema):
-        pass
-
     def get_next_execution_id(self, catalog, schema):
         return self.next_id
 
@@ -56,26 +50,31 @@ class TestModularRunner(unittest.TestCase):
         # Check Execution Order (upstream first)
         sqls = self.adapter.executed_sql
         
-        # 1. Create upstream table in staging
-        # Format: CREATE OR REPLACE TABLE cat.sch_staging.upstream ...
-        upstream_build = [s for s in sqls if "CREATE OR REPLACE TABLE cat.sch_staging.upstream" in s]
-        self.assertTrue(upstream_build)
+        # 1. Create upstream table in staging (Suffix)
+        # Format: CREATE OR REPLACE TABLE cat.sch.upstream__staging ...
+        upstream_build = [s for s in sqls if "CREATE OR REPLACE TABLE cat.sch.upstream__staging" in s]
+        self.assertTrue(upstream_build, f"Upstream build failed: {sqls}")
         
-        # 2. Create downstream view in staging
+        # 2. Create downstream view in staging (Suffix)
         # It should reference upstream in staging!
-        downstream_build = [s for s in sqls if "CREATE OR REPLACE VIEW cat.sch_staging.downstream" in s]
-        self.assertTrue(downstream_build)
-        self.assertIn("cat.sch_staging.upstream", downstream_build[0])
+        downstream_build = [s for s in sqls if "CREATE OR REPLACE VIEW cat.sch.downstream__staging" in s]
+        self.assertTrue(downstream_build, f"Downstream build failed: {sqls}")
+        self.assertIn("cat.sch.upstream__staging", downstream_build[0])
         
-        # 3. Promote upstream (Rename)
-        promote_upstream = [s for s in sqls if "ALTER TABLE cat.sch_staging.upstream RENAME TO cat.sch.upstream" in s]
-        self.assertTrue(promote_upstream)
+        # 3. Promote upstream (Rename: Table Suffix -> Table)
+        promote_upstream = [s for s in sqls if "ALTER TABLE cat.sch.upstream__staging RENAME TO cat.sch.upstream" in s]
+        self.assertTrue(promote_upstream, f"Upstream promote failed: {sqls}")
         
-        # 4. Promote downstream (Re-create View)
+        # 4. Promote downstream (Re-create View: Target -> Target)
         # It should reference upstream in TARGET (cat.sch.upstream)
         promote_downstream = [s for s in sqls if "CREATE OR REPLACE VIEW cat.sch.downstream" in s]
-        self.assertTrue(promote_downstream)
+        self.assertTrue(promote_downstream, f"Downstream promote failed: {sqls}")
         self.assertIn("cat.sch.upstream", promote_downstream[0])
+        
+        # 5. Verify Cleanup
+        # Should call DROP for staging artifacts
+        cleanup_up = [s for s in sqls if "DROP TABLE IF EXISTS cat.sch.upstream__staging" in s]
+        self.assertTrue(cleanup_up)
 
 if __name__ == '__main__':
     unittest.main()

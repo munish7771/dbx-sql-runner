@@ -45,6 +45,14 @@ class TestAPI(unittest.TestCase):
         config = load_config_from_yaml(path)
         self.assertEqual(config["catalog"], "dev_c")
 
+    @patch.dict(os.environ, {"TEST_VAR": "my_secret_token"})
+    def test_load_config_with_env_vars(self):
+        # Test ${VAR} substitution
+        data = {"token": "${TEST_VAR}"}
+        path = self.create_yaml("env.yml", data)
+        config = load_config_from_yaml(path)
+        self.assertEqual(config["token"], "my_secret_token")
+    
     def test_load_config_missing_target(self):
         data = {
             "target": "prod",

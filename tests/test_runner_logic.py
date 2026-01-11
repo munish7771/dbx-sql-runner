@@ -85,23 +85,59 @@ class TestRunnerLogic(unittest.TestCase):
         self.adapter.execute = MagicMock()
         
         # Make adapter execute fail
+        # Make adapter execute fail
         def fail_on_create(sql):
             if "CREATE" in sql:
                 raise Exception("DB Error")
+            # Side effect needs to handle other calls like drop? No, just fail on Create.
         self.adapter.execute.side_effect = fail_on_create
-        
-        # Mock drop schema to verify it's called
-        self.adapter.drop_schema_cascade = MagicMock()
         
         with self.assertRaises(Exception):
             self.runner.run()
             
         # Verify Cleanup was called
-        # once in except block, once in finally? Or just once ensures safety.
-        # Runner code: 
-        # except: drop_schema_cascade; raise
-        # finally (implicit at end of function): drop_schema_cascade
-        self.assertTrue(self.adapter.drop_schema_cascade.called)
+        # Should drop bad_model__staging
+        # The runner calls _safe_drop_target which calls execute("DROP TABLE IF EXISTS ...")
+        
+        calls = [c[0][0] for c in self.adapter.execute.call_args_list]
+        drop_calls = [s for s in calls if "DROP" in s and "bad_model__staging" in s]
+        self.assertTrue(drop_calls, f"Cleanup didn't attempt to drop staging table. Calls: {calls}")
+
+    def test_execute_ddl_with_this_variable(self):
+        # Scenario: DDL model using {this} variable
+        sql_content = "CREATE TABLE {this} (id int)"
+        model = Model("ddl_model", "ddl", sql_content, [], [])
+        self.loader.load_models.return_value = [model]
+        
+        # Pre-populate hash mismatch to ensure EXECUTE
+        self.adapter.metadata = {}
+        
+        self.runner.run()
+        
+        # Verify SQL executed contains the staging FQN
+        expected_fqn = "cat.sch.ddl_model__staging"
+        expected_sql = f"CREATE TABLE {expected_fqn} (id int)"
+        
+        executed_sqls = self.adapter.executed_sql
+        self.assertIn(expected_sql, executed_sqls, f"Did not find expected DDL execution. Found: {executed_sqls}")
+
+    def test_source_injection(self):
+        # Scenario: Model uses {external_source} which is defined in config['sources']
+        sql_content = "SELECT * FROM {external_source}"
+        model = Model("source_model", "view", sql_content, [], [])
+        self.loader.load_models.return_value = [model]
+        
+        # Configure sources in runner
+        self.runner.sources = {"external_source": "prod_catalog.schema.table"}
+        self.runner.config["sources"] = self.runner.sources
+        
+        self.runner.run()
+        
+        # Verify rendered SQL contains the source FQN. 
+        # Since it's a VIEW, DDL is "CREATE VIEW ... AS SELECT * FROM prod_catalog.schema.table"
+        create_view_calls = [s for s in self.adapter.executed_sql if "CREATE OR REPLACE VIEW" in s]
+        self.assertTrue(create_view_calls)
+        self.assertIn("SELECT * FROM prod_catalog.schema.table", create_view_calls[0])
 
 if __name__ == '__main__':
     unittest.main()
