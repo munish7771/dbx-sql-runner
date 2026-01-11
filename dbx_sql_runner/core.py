@@ -107,6 +107,11 @@ class DbxRunnerProject:
         with sql.connect(**self.config) as conn:
             # Metadata & Preparation
             self._ensure_metadata_table(conn, catalog, schema)
+            
+            # Generate Execution ID (Incremental)
+            self.execution_id = self._get_next_execution_id(conn, catalog, schema)
+            print(f"Run Execution ID: {self.execution_id}")
+            
             metadata = self._get_metadata(conn, catalog, schema)
             
             # Plan Execution
@@ -237,7 +242,7 @@ class DbxRunnerProject:
                              print(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
 
                     # Phase 4: Update Metadata
-                    self._update_metadata(conn, catalog, schema, model.name, item['hash'], model.materialized)
+                    self._update_metadata(conn, catalog, schema, model.name, item['hash'], model.materialized, self.execution_id)
 
             # Cleanup
             with conn.cursor() as cursor:
@@ -265,25 +270,55 @@ class DbxRunnerProject:
                     model_name STRING,
                     sql_hash STRING,
                     materialized STRING,
-                    last_executed_at TIMESTAMP
+                    last_executed_at TIMESTAMP,
+                    execution_id BIGINT
                 )
             """)
+            
+            # Schema Evolution: Add execution_id column if it doesn't exist
+            # Databricks SQL doesn't support "ADD COLUMN IF NOT EXISTS" cleanly in all versions or simple syntax
+            # But we can try to add it and ignore error if it exists.
+            try:
+                cursor.execute(f"ALTER TABLE {catalog}.{schema}._dbx_model_metadata ADD COLUMNS (execution_id BIGINT)")
+            except Exception:
+                # Column likely exists or table doesn't exist yet (create processed above would handle new table)
+                pass
 
     def _get_metadata(self, conn, catalog, schema):
         meta = {}
         try:
             with conn.cursor() as cursor:
                 # Deduplicate by taking latest
-                cursor.execute(f"SELECT model_name, sql_hash, materialized FROM {catalog}.{schema}._dbx_model_metadata")
+                cursor.execute(f"SELECT model_name, sql_hash, materialized, execution_id FROM {catalog}.{schema}._dbx_model_metadata ORDER BY last_executed_at ASC")
                 rows = cursor.fetchall()
                 for row in rows:
-                    meta[row[0]] = {"sql_hash": row[1], "materialized": row[2]}
+                    meta[row[0]] = {
+                        "sql_hash": row[1], 
+                        "materialized": row[2],
+                        "execution_id": row[3] if len(row) > 3 else None
+                    }
         except Exception:
             # Table might not exist or be empty/corrupt, ignore
             pass
         return meta
 
-    def _update_metadata(self, conn, catalog, schema, model_name, sql_hash, materialized):
+    def _get_next_execution_id(self, conn, catalog, schema):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT MAX(execution_id) FROM {catalog}.{schema}._dbx_model_metadata")
+                row = cursor.fetchone()
+                if row and row[0] is not None:
+                    try:
+                        return int(row[0]) + 1
+                    except ValueError:
+                         # Handle case where it might be string UUID from before
+                         return 1
+                return 1
+        except Exception:
+             # If table doesn't exist or query fails
+             return 1
+
+    def _update_metadata(self, conn, catalog, schema, model_name, sql_hash, materialized, execution_id):
         with conn.cursor() as cursor:
             # Delta Lake allows MERGE or DELETE/INSERT. Simple INSERT for log history is fine? 
             # Or overwrite? User said "logs the current execution... checks if changed".
@@ -291,7 +326,7 @@ class DbxRunnerProject:
             # Actually, let's just Insert.
             cursor.execute(f"""
                 INSERT INTO {catalog}.{schema}._dbx_model_metadata 
-                VALUES ('{model_name}', '{sql_hash}', '{materialized}', current_timestamp())
+                VALUES ('{model_name}', '{sql_hash}', '{materialized}', current_timestamp(), {execution_id})
             """)
 
     def _execute_model(self, model, conn, context, catalog, schema):
