@@ -215,25 +215,8 @@ class DbxRunnerProject:
                 
                 with conn.cursor() as cursor:
                     if model.materialized == 'view':
-                        # For Views: We just created it in Staging. 
-                        # We need to recreate it in Target. 
-                        # Problem: Staging View points to Staging Dependencies (via context_map).
-                        # We want Target View to point to Target Dependencies? 
-                        # Or do we want Target View to point to Target Dependencies...
-                        # WAIT. If we created View in Staging, it has hardcoded references to '..._staging.upstream'.
-                        # If we just 'ALTER VIEW SET SCHEMA', it might keep those refs?
-                        # Databricks Views text usually persists.
-                        # So Staging View is useless for promotion unless we used pure relative paths (unlikely/hard).
-                        
-                        # BETTER STRATEGY FOR VIEWS:
-                        # We validated it works in Staging. 
-                        # Now re-render SQL with TARGET context and Create/Replace in Target.
-                        # This is safe because Upstreams are/will be promoted to Target too.
-                        # (We are iterating in topological order? No, atomic swap order doesn't strictly matter if done inside transaction,
-                        # but if sequential, we must be careful. 
-                        # Actually, if we promote T1 (Table), then V1 (View depending on T1), 
-                        # T1 is already in Target.
-                        # So we can just rebuild V1 in Target.
+                        # Ensure target is clean (handle case where it was a table)
+                        self._safe_drop(cursor, fqn_target)
                         
                         # Generate SQL for Target
                         target_context_all = {m: f"{catalog}.{schema}.{model_map[m].name}" for m in model_map}
@@ -241,22 +224,17 @@ class DbxRunnerProject:
                         cursor.execute(f"CREATE OR REPLACE VIEW {fqn_target} AS {final_sql}")
                         
                     elif model.materialized == 'table':
-                        # Helper for idempotency
-                        cursor.execute(f"DROP TABLE IF EXISTS {fqn_target}")
+                        # Ensure target is clean
+                        self._safe_drop(cursor, fqn_target)
                         cursor.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
                     
                     elif model.materialized == 'ddl':
-                         # If it was a DDL, we ran it in Staging. 
-                         # If it created a table, we rename it? 
-                         # Hard to know what raw DDL did. 
-                         # Assuming standard patterns:
-                         cursor.execute(f"DROP TABLE IF EXISTS {fqn_target}") # Risky if DDL made a view?
-                         # Let's try rename.
+                         # Treat as table-like artifact for promotion
+                         self._safe_drop(cursor, fqn_target)
                          try:
                              cursor.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
-                         except:
-                             # Fallback or strict error?
-                             print(f"Warning: Could not rename DDL artifact {fqn_staging}. Manual migration might be needed.")
+                         except Exception as e:
+                             print(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
 
                     # Phase 4: Update Metadata
                     self._update_metadata(conn, catalog, schema, model.name, item['hash'], model.materialized)
@@ -266,6 +244,19 @@ class DbxRunnerProject:
                  cursor.execute(f"DROP SCHEMA IF EXISTS {catalog}.{staging_schema} CASCADE")
                  
         print("All models executed and promoted successfully.")
+
+    def _safe_drop(self, cursor, fqn):
+        """Drops table or view, handling type mismatches."""
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {fqn}")
+        except Exception as e:
+            # Check for "is a VIEW" or similar error codes
+            # SQLSTATE 42809 is common for Wrong Object Type
+            msg = str(e).lower()
+            if "view" in msg or "42809" in msg:
+                 cursor.execute(f"DROP VIEW IF EXISTS {fqn}")
+            else:
+                raise
 
     def _ensure_metadata_table(self, conn, catalog, schema):
         with conn.cursor() as cursor:
