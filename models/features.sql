@@ -2,4 +2,4 @@
 -- materialized: table
 
 SELECT *
-FROM workspace.features.stores_features
+FROM {stores_features}

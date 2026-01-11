@@ -1,5 +1,5 @@
 -- materialized: ddl
-CREATE OR REPLACE TABLE downstream_features (
+CREATE OR REPLACE TABLE {this} (
   id STRING COMMENT 'Unique store identifier',
   name STRING COMMENT 'Store name',
   opened_at TIMESTAMP COMMENT 'Store opening timestamp',

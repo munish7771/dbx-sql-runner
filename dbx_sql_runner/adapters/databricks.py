@@ -1,7 +1,9 @@
 import time
 from typing import Dict, Any, List
 from databricks import sql
+from databricks.sql.exc import RequestError, Error
 from .base import BaseAdapter
+from ..exceptions import DbxConfigurationError, DbxAuthenticationError, DbxExecutionError
 
 class DatabricksAdapter(BaseAdapter):
     def __init__(self, config: Dict[str, Any]):
@@ -13,24 +15,40 @@ class DatabricksAdapter(BaseAdapter):
         required = ['server_hostname', 'http_path', 'access_token']
         for req in required:
             if req not in self.config:
-                raise ValueError(f"Databricks config missing required key: {req}")
+                raise DbxConfigurationError(f"Databricks config missing required key: {req}")
 
     def execute(self, sql_statement: str) -> None:
-        with sql.connect(**self.config) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql_statement)
+        try:
+            with sql.connect(**self.config) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql_statement)
+        except RequestError as e:
+            # Often auth related
+            raise DbxAuthenticationError(
+                f"Failed to authenticate with Databricks: {e}. "
+                "Please check your 'access_token', 'server_hostname', and 'http_path' in profiles.yml."
+            ) from e
+        except Error as e:
+            raise DbxExecutionError(f"Databricks SQL Error: {e}") from e
+        except Exception as e:
+             raise DbxExecutionError(f"Unexpected error executing SQL: {e}") from e
 
     def fetch_result(self, sql_statement: str) -> List[Any]:
-        with sql.connect(**self.config) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql_statement)
-                return cursor.fetchall()
-    
-    def ensure_schema_exists(self, catalog: str, schema: str) -> None:
-        self.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+        try:
+            with sql.connect(**self.config) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql_statement)
+                    return cursor.fetchall()
+        except RequestError as e:
+            raise DbxAuthenticationError(
+                f"Failed to authenticate with Databricks: {e}. "
+                "Please check your 'access_token', 'server_hostname', and 'http_path' in profiles.yml."
+            ) from e
+        except Error as e:
+            raise DbxExecutionError(f"Databricks SQL Error: {e}") from e
+        except Exception as e:
+             raise DbxExecutionError(f"Unexpected error fetching results: {e}") from e
 
-    def drop_schema_cascade(self, catalog: str, schema: str) -> None:
-        self.execute(f"DROP SCHEMA IF EXISTS {catalog}.{schema} CASCADE")
 
     def get_metadata(self, catalog: str, schema: str) -> Dict[str, Any]:
         self._ensure_metadata_table(catalog, schema)

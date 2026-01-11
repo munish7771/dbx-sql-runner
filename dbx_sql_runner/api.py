@@ -1,11 +1,16 @@
 import yaml
+import os
 from .runner import DbxRunner
 from .project import ProjectLoader
 from .adapters.databricks import DatabricksAdapter
 
 def load_config_from_yaml(path):
     with open(path, 'r') as f:
-        raw = yaml.safe_load(f)
+        content = f.read()
+    
+    # Expand environment variables ${VAR}
+    expanded_content = os.path.expandvars(content)
+    raw = yaml.safe_load(expanded_content)
     
     # helper to resolve profile
     if "target" in raw and "outputs" in raw:

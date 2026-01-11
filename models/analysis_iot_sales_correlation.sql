@@ -5,8 +5,8 @@
 -- Assuming 'features' logic is valid or user has that table.
 
 SELECT 
-    a.device_status,
-    a.max_group_temp,
+    a.device_status as _status,
+    a.max_group_temp as group_temp,
     current_date() as analysis_date
 FROM {fct_high_heat_alerts} a
 -- avoiding join to 'features' if it relies on external tables that might not exist 

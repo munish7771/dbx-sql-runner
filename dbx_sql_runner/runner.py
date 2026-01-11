@@ -1,6 +1,6 @@
 import hashlib
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List
 from .models import Model
 from .adapters.base import BaseAdapter
 from .project import ProjectLoader, DependencyGraph
@@ -12,7 +12,8 @@ class DbxRunner:
         self.config = config
         self.catalog = config.get('catalog')
         self.schema = config.get('schema')
-        self.staging_schema = f"{self.schema}_staging"
+        self.sources = config.get('sources', {})
+        # Staging schema removed; using suffixes instead
 
     def run(self, preview=False):
         # Load and Sort Models
@@ -32,12 +33,20 @@ class DbxRunner:
         # Plan Execution
         execution_plan = []
         context_map = {} # model_name -> fqn (target or staging)
+        
+        # Initialize context mapping with Configured Sources
+        # This allows {source_name} to be resolved to their configured FQN
+        context_map.update(self.sources)
+
         model_map = {m.name: m for m in models}
 
         # Need to iterate in sorted order to build context map
         for model in sorted_models:
              # Calculate generic hash (using target context)
             target_context = {m: f"{self.catalog}.{self.schema}.{model_map[m].name}" for m in model_map}
+            # Add sources to target context as well
+            target_context.update(self.sources)
+            
             current_sql_content = self._render_sql(model.sql, target_context)
             current_hash = hashlib.sha256(current_sql_content.encode('utf-8')).hexdigest()
             
@@ -55,7 +64,8 @@ class DbxRunner:
             })
             
             if action == "EXECUTE":
-                context_map[model.name] = f"{self.catalog}.{self.staging_schema}.{model.name}"
+                # Staging FQN: suffix with __staging
+                context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}__staging"
             else:
                 context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
 
@@ -68,8 +78,6 @@ class DbxRunner:
             return
 
         # Execute
-        self.adapter.ensure_schema_exists(self.catalog, self.staging_schema)
-        
         try:
             for item in execution_plan:
                 if item['action'] == "SKIP":
@@ -77,7 +85,10 @@ class DbxRunner:
                 
                 model = item['model']
                 print(f"Building {model.name} in Staging...")
-                self._execute_model(model, context_map, self.staging_schema)
+                # Pass suffix-based FQN directly or let execute handle it?
+                # _execute_model logic needs update to handle FQN construction
+                staging_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
+                self._execute_model(model, context_map, staging_fqn)
                 
             # Promote / Atomic Swap
             print("Promoting successful models to Target...")
@@ -86,23 +97,25 @@ class DbxRunner:
                     continue
                 
                 model = item['model']
-                self._promote_model(model, self.staging_schema)
+                # Promotion logic uses suffix
+                self._promote_model(model)
                 self.adapter.update_metadata(self.catalog, self.schema, model.name, item['hash'], model.materialized, execution_id)
                 
         except Exception as e:
             print(f"Execution failed. Aborting. Error: {e}")
-            self.adapter.drop_schema_cascade(self.catalog, self.staging_schema)
+            self._cleanup_staging(execution_plan)
             raise
         
         # Cleanup
-        self.adapter.drop_schema_cascade(self.catalog, self.staging_schema)
+        self._cleanup_staging(execution_plan)
         print("All models executed and promoted successfully.")
 
-    def _execute_model(self, model: Model, context: Dict[str, str], schema: str):
-        rendered_sql = self._render_sql(model.sql, context)
-        # Validation could go here (explain)
+    def _execute_model(self, model: Model, context: Dict[str, str], fqn: str):
+        # Inject {this} to point to the current FQN (staging or target)
+        local_context = context.copy()
+        local_context["this"] = fqn
         
-        fqn = f"{self.catalog}.{schema}.{model.name}"
+        rendered_sql = self._render_sql(model.sql, local_context)
         
         partition_clause = ""
         if model.partition_by:
@@ -120,9 +133,9 @@ class DbxRunner:
         
         self.adapter.execute(ddl)
 
-    def _promote_model(self, model: Model, staging_schema: str):
+    def _promote_model(self, model: Model):
         fqn_target = f"{self.catalog}.{self.schema}.{model.name}"
-        fqn_staging = f"{self.catalog}.{self.staging_schema}.{model.name}"
+        fqn_staging = f"{self.catalog}.{self.schema}.{model.name}__staging"
         
         # Helper to drop target before swap (idempotency)
         self._safe_drop_target(fqn_target)
@@ -130,8 +143,7 @@ class DbxRunner:
         if model.materialized == 'view':
              # For views, we simply re-create them in the Target schema.
              # We MUST re-render the SQL using the Target schema context so the view definition points to production tables.
-             # Re-build context map for ALL models pointing to target
-             # TODO: Optimize by computing this once.
+             # TODO: Optimize context loading
              target_context = {m.name: f"{self.catalog}.{self.schema}.{m.name}" for m in self.loader.load_models()}
              
              final_sql = self._render_sql(model.sql, target_context)
@@ -139,25 +151,27 @@ class DbxRunner:
              
         elif model.materialized == 'table':
             # Atomic Swap (Rename)
-            # Since we dropped target above, we just rename Staging -> Target
             self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
         
         elif model.materialized == 'ddl':
-             # Treat like a table for promotion
              try:
                  self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
              except Exception as e:
                  print(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
 
+    def _cleanup_staging(self, execution_plan: List[Dict]):
+        print("Cleaning up staging artifacts...")
+        for item in execution_plan:
+            # We cleanup everything, skipped or not (though skipped won't exist usually)
+            # Actually only need to cleanup things we executed.
+            if item['action'] == "EXECUTE":
+                fqn_staging = f"{self.catalog}.{self.schema}.{item['name']}__staging"
+                self._safe_drop_target(fqn_staging)
+
     def _safe_drop_target(self, fqn: str):
-        # We try to drop TABLE first, if it fails because it's a VIEW, we drop VIEW.
-        # Or check metadata? Simpler to try/except or use adapter helper if robust.
-        # Adapter's execute method raises error?
-        # Let's try DROP TABLE IF EXISTS.
         try:
              self.adapter.execute(f"DROP TABLE IF EXISTS {fqn}")
         except Exception:
-             # Likely it's a view
              self.adapter.execute(f"DROP VIEW IF EXISTS {fqn}")
 
     def _render_sql(self, sql_body, context):

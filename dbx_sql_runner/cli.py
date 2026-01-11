@@ -9,12 +9,12 @@ def main():
     # Run command
     run_parser = subparsers.add_parser("run", help="Run the models against the database")
     run_parser.add_argument("--models-dir", default="models", help="Directory containing SQL models")
-    run_parser.add_argument("--profile", required=True, help="Path to YAML configuration file (profiles.yml)")
+    run_parser.add_argument("--profile", required=False, default="profiles.yml", help="Path to YAML configuration file (default: profiles.yml)")
 
     # Build command (Preview)
     build_parser = subparsers.add_parser("build", help="Preview the models that will be built")
     build_parser.add_argument("--models-dir", default="models", help="Directory containing SQL models")
-    build_parser.add_argument("--profile", required=True, help="Path to YAML configuration file (profiles.yml)")
+    build_parser.add_argument("--profile", required=False, default="profiles.yml", help="Path to YAML configuration file (default: profiles.yml)")
     
     args = parser.parse_args()
     

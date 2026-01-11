@@ -20,13 +20,5 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def ensure_schema_exists(self, catalog: str, schema: str) -> None:
-        pass
-
-    @abstractmethod
-    def drop_schema_cascade(self, catalog: str, schema: str) -> None:
-        pass
-        
-    @abstractmethod
     def get_next_execution_id(self, catalog: str, schema: str) -> int:
         pass
