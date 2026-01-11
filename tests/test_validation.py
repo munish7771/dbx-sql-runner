@@ -51,7 +51,6 @@ class TestSchemaValidation(unittest.TestCase):
         # If we have a missing dependency, run() might fail before execution.
         # Let's change the model to be simple: "SELECT 1"
         with open(os.path.join(self.models_dir, "simple_model.sql"), "w") as f:
-            f.write("SELECT 1")
             f.write("-- materialized: view\nSELECT 1")
             
         with open(os.path.join(self.models_dir, "test_model.sql"), "w") as f:
@@ -175,6 +174,35 @@ class TestSchemaValidation(unittest.TestCase):
             project.run()
             
         self.assertIn("Schema validation failed", str(cm.exception))
+
+    @patch("dbx_sql_runner.core.sql.connect")
+    def test_safe_drop_logic(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_connect.return_value.__enter__.return_value = mock_conn
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = []
+        
+        # Test 1: Normal Drop (Table exists)
+        project = DbxRunnerProject(self.models_dir, {})
+        project._safe_drop(mock_cursor, "test_table")
+        # Should call DROP TABLE, no exception
+        mock_cursor.execute.assert_called_with("DROP TABLE IF EXISTS test_table")
+        
+        # Test 2: Drop fails with View error -> Retry as View
+        mock_cursor.reset_mock()
+        def side_effect(query):
+            if "DROP TABLE" in query:
+                raise Exception("SQLSTATE: 42809 ... is a VIEW")
+            return None
+        mock_cursor.execute.side_effect = side_effect
+        
+        project._safe_drop(mock_cursor, "test_view")
+        
+        # Verify calls
+        calls = [c[0][0] for c in mock_cursor.execute.call_args_list]
+        self.assertIn("DROP TABLE IF EXISTS test_view", calls)
+        self.assertIn("DROP VIEW IF EXISTS test_view", calls)
 
 if __name__ == "__main__":
     unittest.main()
