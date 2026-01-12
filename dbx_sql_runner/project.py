@@ -1,7 +1,7 @@
 import os
 import re
 import networkx as nx
-from typing import List, Dict
+from typing import List
 from .models import Model
 
 class ProjectLoader:

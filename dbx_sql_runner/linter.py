@@ -3,7 +3,7 @@ import re
 import yaml
 import sqlglot
 from sqlglot import exp
-from typing import List, Dict, Any
+from typing import Dict, Any
 from .project import ProjectLoader
 
 from .api import load_config_from_yaml
@@ -124,7 +124,7 @@ class ProjectLinter:
             
             sources = config.get("sources", {})
             for source_name in sources.keys():
-                self._check_pattern(source_name, "source_name", f"Source")
+                self._check_pattern(source_name, "source_name", "Source")
                 
         except Exception as e:
             self.errors.append(f"Failed to parse profiles.yml: {e}")

@@ -1,5 +1,4 @@
 import os
-import sys
 
 PROFILES_YML_TEMPLATE = """
 target: dev

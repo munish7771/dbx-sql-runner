@@ -4,13 +4,12 @@ import tempfile
 import shutil
 import yaml
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add parent dir to path to import dbx_sql_runner
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from dbx_sql_runner.api import load_config_from_yaml, run_project
-from dbx_sql_runner.runner import DbxRunner
 
 class TestAPI(unittest.TestCase):
     def setUp(self):

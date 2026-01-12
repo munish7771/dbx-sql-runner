@@ -1,4 +1,3 @@
-import time
 from typing import Dict, Any, List
 from databricks import sql
 from databricks.sql.exc import RequestError, Error
@@ -66,7 +65,7 @@ class DatabricksAdapter(BaseAdapter):
                     "materialized": row[2],
                     "execution_id": row[3] if len(row) > 3 else None
                 }
-        except Exception as e:
+        except Exception:
             # print(f"Metadata read error (ignoring): {e}") 
             pass
         return meta
