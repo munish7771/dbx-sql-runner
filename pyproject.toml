@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
 
 [project.scripts]
 dbx-sql-runner = "dbx_sql_runner.cli:main"
@@ -30,3 +30,6 @@ dbx-sql-runner = "dbx_sql_runner.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["dbx_sql_runner*"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

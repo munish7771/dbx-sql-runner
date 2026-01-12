@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 import sys
 import os
 
@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from dbx_sql_runner.runner import DbxRunner
-from dbx_sql_runner.project import ProjectLoader, DependencyGraph
+from dbx_sql_runner.project import ProjectLoader
 from dbx_sql_runner.models import Model
 from dbx_sql_runner.adapters.base import BaseAdapter
 
