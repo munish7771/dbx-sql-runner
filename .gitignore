@@ -30,3 +30,6 @@ build/
 # Databricks / Project Specific
 profiles.yml
 .databricks/
+
+# Local Dev
+dev_run/

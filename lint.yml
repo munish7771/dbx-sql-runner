@@ -1,0 +1,12 @@
+# Configuration for dbx-sql-runner linter
+# You can customize the regex patterns and error messages here.
+rules:
+  model_name:
+    pattern: "^[a-z0-9_]+$"
+    message: "Model names must be snake_case (lowercase, numbers, underscores)"
+  source_name:
+    pattern: "^[a-z0-9_]+$"
+    message: "Source names must be snake_case (lowercase, numbers, underscores)"
+  column_name:
+    pattern: "^[a-z0-9_]+$"
+    message: "Column names must be snake_case (lowercase, numbers, underscores)"

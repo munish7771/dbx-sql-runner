@@ -11,18 +11,26 @@ A lightweight, library-first SQL transformation tool for Databricks SQL, inspire
 
 ## Installation
 
-### Local Development
+### Development
 To install the project in editable mode:
 
 ```bash
 pip install -e .
 ```
 
+### Running Tests
+To run the automated test suite:
+
+```bash
+pip install .[dev]
+python -m pytest
+```
+
 ### Production
 To install the package normally:
 
 ```bash
-pip install .
+pip install dbx-sql-runner
 ```
 
 ## Configuration (profiles.yml)
@@ -44,6 +52,9 @@ sources:
 Run your project from the command line. By default, it looks for `profiles.yml` in the current directory.
 
 ```bash
+# Initialize a new project
+dbx-sql-runner init my_project
+
 # Run with default profile (profiles.yml)
 dbx-sql-runner run
 
