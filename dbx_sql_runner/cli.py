@@ -16,6 +16,14 @@ def main():
     build_parser.add_argument("--models-dir", default="models", help="Directory containing SQL models")
     build_parser.add_argument("--profile", required=False, default="profiles.yml", help="Path to YAML configuration file (default: profiles.yml)")
     
+    # Init command
+    init_parser = subparsers.add_parser("init", help="Initialize a new project")
+    init_parser.add_argument("project_name", nargs="?", default=".", help="Name of the project directory (default: current directory)")
+
+    # Lint command
+    lint_parser = subparsers.add_parser("lint", help="Lint the project for naming conventions")
+    lint_parser.add_argument("--config", default="lint.yml", help="Path to linter config file")
+
     args = parser.parse_args()
     
     try:
@@ -27,6 +35,15 @@ def main():
             # Assuming run_project just instantiates and runs, we might need to modify it.
             # For now, let's keep it simple and assume run_project is updated.
             run_project(args.models_dir, args.profile, preview=True)
+        elif args.command == "init":
+            from .scaffold import init_project
+            init_project(args.project_name)
+        elif args.command == "lint":
+            from .linter import ProjectLinter
+            linter = ProjectLinter(config_file=args.config)
+            success = linter.lint_project()
+            if not success:
+                sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
