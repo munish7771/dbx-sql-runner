@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 import yaml
 import sqlglot
 from sqlglot import exp
@@ -7,6 +8,8 @@ from typing import Dict, Any
 from .project import ProjectLoader
 
 from .api import load_config_from_yaml
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "model_name": {
@@ -34,7 +37,7 @@ class ProjectLinter:
     def _load_config(self) -> Dict[str, Any]:
         config = DEFAULT_CONFIG.copy()
         if os.path.exists(self.config_file):
-            print(f"Loading linter config from {self.config_file}")
+            logger.info(f"Loading linter config from {self.config_file}")
             try:
                 with open(self.config_file, 'r') as f:
                     user_config = yaml.safe_load(f) or {}
@@ -45,23 +48,23 @@ class ProjectLinter:
                         if rule_name in config:
                             config[rule_name].update(rule_def)
             except Exception as e:
-                print(f"Warning: Failed to load config file: {e}")
+                logger.warning(f"Warning: Failed to load config file: {e}")
         return config
 
     def lint_project(self) -> bool:
-        print(f"Linting project in {self.project_dir}...\n")
+        logger.info(f"Linting project in {self.project_dir}...\n")
         
         self.check_models()
         self.check_sources()
 
         if self.errors:
-            print("\nFound the following issues:")
+            logger.info("\nFound the following issues:")
             for err in self.errors:
-                print(f" - {err}")
-            print(f"\nTotal errors: {len(self.errors)}")
+                logger.error(f" - {err}")
+            logger.info(f"\nTotal errors: {len(self.errors)}")
             return False
         else:
-            print("All checks passed!")
+            logger.info("All checks passed!")
             return True
 
     def _check_pattern(self, value: str, rule_name: str, context: str):
@@ -111,7 +114,7 @@ class ProjectLinter:
         except Exception as e:
             # Don't fail the whole lint run if one file can't be parsed
             # Just warn or add to errors? Maybe a warning is better for parsing issues.
-            print(f"Warning: Could not check columns for {model.name}: {e}")
+            logger.warning(f"Warning: Could not check columns for {model.name}: {e}")
 
     def check_sources(self):
         profile_path = os.path.join(self.project_dir, "profiles.yml")
