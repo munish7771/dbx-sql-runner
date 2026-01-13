@@ -1,8 +1,18 @@
+import logging
 import argparse
 import sys
 from .api import run_project
 
 def main():
+    # Configure logging to match dbt-style output
+    # Format: HH:MM:SS  Message
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s  %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    logger = logging.getLogger(__name__)
+
     parser = argparse.ArgumentParser(description="dbx-sql-runner: Run SQL models on Databricks")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -45,7 +55,7 @@ def main():
             if not success:
                 sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

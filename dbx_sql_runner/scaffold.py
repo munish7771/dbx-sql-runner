@@ -1,4 +1,7 @@
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 PROFILES_YML_TEMPLATE = """
 target: dev
@@ -86,7 +89,7 @@ rules:
 def create_file(path, content):
     with open(path, "w") as f:
         f.write(content)
-    print(f"Created {path}")
+    logger.info(f"Created {path}")
 
 def init_project(project_name="."):
     """
@@ -100,12 +103,12 @@ def init_project(project_name="."):
     
     if project_name != "." and not os.path.exists(base_dir):
         os.makedirs(base_dir)
-        print(f"Created directory {base_dir}")
+        logger.info(f"Created directory {base_dir}")
     
     models_dir = os.path.join(base_dir, "models")
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
-        print(f"Created directory {models_dir}")
+        logger.info(f"Created directory {models_dir}")
 
     # Create files
     create_file(os.path.join(base_dir, "profiles.yml"), PROFILES_YML_TEMPLATE)
@@ -121,7 +124,7 @@ def init_project(project_name="."):
             name = "My Project"
         create_file(readme_path, README_TEMPLATE.format(project_name=name))
 
-    print(f"\nProject initialized successfully in {base_dir}!")
-    print("Next steps:")
-    print("1. Edit 'profiles.yml' with your Databricks credentials.")
-    print("2. Run 'dbx-sql-runner run' to execute your models.")
+    logger.info(f"\nProject initialized successfully in {base_dir}!")
+    logger.info("Next steps:")
+    logger.info("1. Edit 'profiles.yml' with your Databricks credentials.")
+    logger.info("2. Run 'dbx-sql-runner run' to execute your models.")

@@ -1,9 +1,14 @@
 import hashlib
 import re
 from typing import Dict, Any, List
+import time
+import logging
 from .models import Model
 from .adapters.base import BaseAdapter
 from .project import ProjectLoader, DependencyGraph
+
+    
+logger = logging.getLogger(__name__)
 
 class DbxRunner:
     def __init__(self, project_loader: ProjectLoader, adapter: BaseAdapter, config: Dict[str, Any]):
@@ -21,14 +26,15 @@ class DbxRunner:
         graph = DependencyGraph(models)
         sorted_models = graph.get_execution_order()
         
-        print(f"Found {len(sorted_models)} models.")
-        
         # Get Metadata / Context
         all_meta = self.adapter.get_metadata(self.catalog, self.schema)
         
         # Generate Execution ID (Incremental)
         execution_id = self.adapter.get_next_execution_id(self.catalog, self.schema)
-        print(f"Run Execution ID: {execution_id}")
+        
+        if not self.config.get('silent'):
+            logger.info(f"SQL RUNNER | Run Execution ID: {execution_id}")
+            logger.info(f"Found {len(sorted_models)} models")
 
         # Plan Execution
         execution_plan = []
@@ -70,45 +76,90 @@ class DbxRunner:
                 context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
 
         # Print Plan
-        print("Execution Plan:")
-        for item in execution_plan:
-            print(f" - {item['name']}: {item['action']}")
+        if not self.config.get('silent'):
+            logger.info("Execution Plan:")
+            for item in execution_plan:
+                logger.info(f" - {item['name']}: {item['action']}")
 
         if preview:
             return
 
         # Execute
-        try:
-            for item in execution_plan:
-                if item['action'] == "SKIP":
-                    continue
-                
-                model = item['model']
-                print(f"Building {model.name} in Staging...")
+        results = {"PASS": 0, "WARN": 0, "ERROR": 0, "SKIP": 0}
+        model_status = {} # model_name -> status
+        
+        total_models = len([i for i in execution_plan if i['action'] == "EXECUTE"])
+        current_idx = 0
+        
+        for item in execution_plan:
+            model = item['model']
+            
+            if item['action'] == "SKIP":
+                model_status[model.name] = "SKIP"
+                results["SKIP"] += 1
+                continue
+            
+            # Check Upstream Dependencies
+            upstream_failed = False
+            for dep in model.depends_on:
+                if dep in model_status and model_status[dep] in ["ERROR", "SKIP_UPSTREAM"]:
+                    upstream_failed = True
+                    break
+            
+            if upstream_failed:
+                model_status[model.name] = "SKIP_UPSTREAM"
+                logger.info(f"Skipping {model.name} due to upstream failure")
+                results["SKIP"] += 1
+                continue
+
+            current_idx += 1
+            self._log_start(current_idx, total_models, model)
+            start_time = time.time()
+            
+            try:
                 # Pass suffix-based FQN directly or let execute handle it?
                 # _execute_model logic needs update to handle FQN construction
                 staging_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
                 self._execute_model(model, context_map, staging_fqn)
                 
-            # Promote / Atomic Swap
-            print("Promoting successful models to Target...")
-            for item in execution_plan:
-                if item['action'] == "SKIP":
-                    continue
+                duration = time.time() - start_time
+                self._log_end(current_idx, total_models, model, duration)
+                model_status[model.name] = "SUCCESS"
+                results["PASS"] += 1
                 
-                model = item['model']
-                # Promotion logic uses suffix
+            except Exception as e:
+                logger.error(f"Error executing {model.name}: {e}")
+                model_status[model.name] = "ERROR"
+                results["ERROR"] += 1
+            
+        # Promote / Atomic Swap
+        # print("Promoting models...") 
+        for item in execution_plan:
+            model = item['model']
+            
+            # Only promote if SUCCESS (skip SKIPPED, ERROR, and originally SKIP)
+            if model_status.get(model.name) != "SUCCESS":
+                continue
+
+            try:
                 self._promote_model(model)
                 self.adapter.update_metadata(self.catalog, self.schema, model.name, item['hash'], model.materialized, execution_id)
-                
-        except Exception as e:
-            print(f"Execution failed. Aborting. Error: {e}")
-            self._cleanup_staging(execution_plan)
-            raise
-        
+            except Exception as e:
+                logger.error(f"Error promoting {model.name}: {e}")
+                results["ERROR"] += 1 # Should we count promotion error as error? Yes.
+                # Adjust PASS count? Technically it executed but didn't promote.
+                # Let's just increment ERROR.
+
         # Cleanup
         self._cleanup_staging(execution_plan)
-        print("All models executed and promoted successfully.")
+        logger.info(f"Done. PASS={results['PASS']} WARN={results['WARN']} ERROR={results['ERROR']} SKIP={results['SKIP']} TOTAL={results['PASS']+results['ERROR']+results['SKIP']}")
+
+    def _log_start(self, idx, total, model):
+        # Timestamp handled by logging formatter
+        logger.info(f"{idx} of {total} START sql {model.materialized} model {self.catalog}.{self.schema}.{model.name} ... [RUN]")
+
+    def _log_end(self, idx, total, model, duration):
+        logger.info(f"{idx} of {total} OK created {model.materialized} model {self.catalog}.{self.schema}.{model.name} ... [OK in {duration:.2f}s]")
 
     def _execute_model(self, model: Model, context: Dict[str, str], fqn: str):
         # Inject {this} to point to the current FQN (staging or target)
@@ -154,13 +205,13 @@ class DbxRunner:
             self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
         
         elif model.materialized == 'ddl':
-             try:
-                 self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
-             except Exception as e:
-                 print(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
+              try:
+                  self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
+              except Exception as e:
+                  logger.warning(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
 
     def _cleanup_staging(self, execution_plan: List[Dict]):
-        print("Cleaning up staging artifacts...")
+        # print("Cleaning up...") # staging artifacts...")
         for item in execution_plan:
             # We cleanup everything, skipped or not (though skipped won't exist usually)
             # Actually only need to cleanup things we executed.
