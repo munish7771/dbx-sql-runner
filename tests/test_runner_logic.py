@@ -85,20 +85,19 @@ class TestRunnerLogic(unittest.TestCase):
         self.adapter.execute = MagicMock()
         
         # Make adapter execute fail
-        # Make adapter execute fail
         def fail_on_create(sql):
             if "CREATE" in sql:
                 raise Exception("DB Error")
-            # Side effect needs to handle other calls like drop? No, just fail on Create.
         self.adapter.execute.side_effect = fail_on_create
         
-        with self.assertRaises(Exception):
+        # With new "Fail Soft" logic, run() should NOT raise exception
+        try:
             self.runner.run()
+        except Exception as e:
+            self.fail(f"runner.run() should handle exceptions internally but raised: {e}")
             
         # Verify Cleanup was called
         # Should drop bad_model__staging
-        # The runner calls _safe_drop_target which calls execute("DROP TABLE IF EXISTS ...")
-        
         calls = [c[0][0] for c in self.adapter.execute.call_args_list]
         drop_calls = [s for s in calls if "DROP" in s and "bad_model__staging" in s]
         self.assertTrue(drop_calls, f"Cleanup didn't attempt to drop staging table. Calls: {calls}")
