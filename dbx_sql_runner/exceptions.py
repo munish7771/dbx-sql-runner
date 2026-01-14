@@ -10,6 +10,19 @@ class DbxAuthenticationError(DbxRunnerError):
     """Raised when authentication with Databricks fails."""
     pass
 
+
 class DbxExecutionError(DbxRunnerError):
     """Raised when a SQL execution fails."""
+    pass
+
+class DbxDependencyError(DbxRunnerError):
+    """Raised when there are issues with model dependencies (e.g. cycles)."""
+    pass
+
+class DbxModelLoadingError(DbxRunnerError):
+    """Raised when loading models fails (e.g. directory not found)."""
+    pass
+
+class DbxTemplateError(DbxRunnerError):
+    """Raised when SQL templating fails."""
     pass
