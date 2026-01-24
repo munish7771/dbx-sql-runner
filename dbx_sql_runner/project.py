@@ -3,6 +3,7 @@ import re
 import networkx as nx
 from typing import List
 from .models import Model
+from .exceptions import DbxModelLoadingError, DbxDependencyError
 
 class ProjectLoader:
     def __init__(self, models_dir: str):
@@ -11,7 +12,7 @@ class ProjectLoader:
     def load_models(self) -> List[Model]:
         models = []
         if not os.path.exists(self.models_dir):
-            raise ValueError(f"Models directory not found: {self.models_dir}")
+            raise DbxModelLoadingError(f"Models directory not found: {self.models_dir}")
             
         for f in os.listdir(self.models_dir):
             if f.endswith(".sql"):
@@ -74,7 +75,7 @@ class DependencyGraph:
         try:
             sorted_names = list(nx.topological_sort(self.dag))
         except nx.NetworkXUnfeasible:
-            raise ValueError("Cyclic dependency detected in models")
+            raise DbxDependencyError("Cyclic dependency detected in models")
         
         model_map = {m.name: m for m in self.models}
         return [model_map[name] for name in sorted_names]

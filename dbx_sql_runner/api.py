@@ -18,7 +18,10 @@ def load_config_from_yaml(path):
         outputs = raw.get("outputs", {})
         if target not in outputs:
              raise ValueError(f"Target environment '{target}' not found in 'outputs'")
-        return outputs[target]
+        
+        config = outputs[target]
+        config['target_name'] = target
+        return config
     return raw
 
 def run_project(models_dir, config_path, preview=False):

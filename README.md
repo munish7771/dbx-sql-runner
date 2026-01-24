@@ -10,6 +10,7 @@ A lightweight, library-first SQL transformation tool for Databricks SQL, inspire
 - **Library Design**: Import `dbx_sql_runner` in your Python scripts (great for Airflow/Databricks Jobs) or run it via CLI.
 - **Flexible Sources**: Define external tables in `profiles.yml` and reference them as `{source_name}` in your SQL.
 - **Automated Linting**: Built-in linter (using Ruff) to ensure code quality.
+- **Alerting**: Send notifications to a webhook URL on run completion or failure.
 
 ## Installation
 

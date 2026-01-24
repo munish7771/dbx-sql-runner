@@ -3,6 +3,8 @@ import re
 from typing import Dict, Any, List
 import time
 import logging
+import urllib.request
+import json
 from .models import Model
 from .adapters.base import BaseAdapter
 from .project import ProjectLoader, DependencyGraph
@@ -153,6 +155,39 @@ class DbxRunner:
         # Cleanup
         self._cleanup_staging(execution_plan)
         logger.info(f"Done. PASS={results['PASS']} WARN={results['WARN']} ERROR={results['ERROR']} SKIP={results['SKIP']} TOTAL={results['PASS']+results['ERROR']+results['SKIP']}")
+
+        self._send_webhook_alert(results, total_models, time.time() - start_time if 'start_time' in locals() else 0)
+
+    def _send_webhook_alert(self, results, total_models, duration):
+        webhook_url = self.config.get('alert_webhook_url')
+        if not webhook_url:
+            return
+
+        payload = {
+            "environment": self.config.get('target_name', 'unknown'),
+            "total_models": total_models,
+            "run_stats": {
+                "executed": results['PASS'] + results['ERROR'],
+                "skipped": results['SKIP'],
+                "passed": results['PASS'],
+                "failed": results['ERROR']
+            },
+            "duration_seconds": round(duration, 2)
+        }
+
+        try:
+            req = urllib.request.Request(
+                webhook_url, 
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req) as response:
+                if response.status >= 400:
+                    logger.warning(f"Failed to send webhook alert. Status: {response.status}")
+                else:
+                    logger.info("Webhook alert sent successfully.")
+        except Exception as e:
+            logger.warning(f"Failed to send webhook alert: {e}")
 
     def _log_start(self, idx, total, model):
         # Timestamp handled by logging formatter

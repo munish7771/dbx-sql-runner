@@ -15,6 +15,7 @@ outputs:
     schema: "my_schema_dev"
     sources:
       my_source: "prod_catalog.schema.table"
+    # alert_webhook_url: "https://your.webhook.url"
 
   prod:
     server_hostname: "dbc-xxxxxxxx-xxxx.cloud.databricks.com"
@@ -22,6 +23,7 @@ outputs:
     access_token: "${DBX_TOKEN_PROD}"
     catalog: "my_catalog_prod"
     schema: "my_schema_prod"
+    # alert_webhook_url: "https://your.webhook.url"
 """.strip()
 
 EXAMPLE_SQL_TEMPLATE = """

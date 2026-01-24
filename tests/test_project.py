@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from dbx_sql_runner.project import ProjectLoader, DependencyGraph
 from dbx_sql_runner.models import Model
+from dbx_sql_runner.exceptions import DbxModelLoadingError, DbxDependencyError
 
 class TestProjectLoader(unittest.TestCase):
     def setUp(self):
@@ -23,7 +24,7 @@ class TestProjectLoader(unittest.TestCase):
 
     def test_load_nonexistent_dir(self):
         loader = ProjectLoader("non_existent_path")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DbxModelLoadingError):
             loader.load_models()
 
     def test_parse_model_metadata(self):
@@ -69,7 +70,7 @@ class TestDependencyGraph(unittest.TestCase):
         m2 = Model("b", "view", "", ["a"], [])
         
         graph = DependencyGraph([m1, m2])
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(DbxDependencyError) as cm:
             graph.get_execution_order()
         self.assertIn("Cyclic dependency", str(cm.exception))
 

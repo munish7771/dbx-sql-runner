@@ -13,3 +13,11 @@ class DbxAuthenticationError(DbxRunnerError):
 class DbxExecutionError(DbxRunnerError):
     """Raised when a SQL execution fails."""
     pass
+
+class DbxModelLoadingError(DbxRunnerError):
+    """Raised when model loading fails."""
+    pass
+
+class DbxDependencyError(DbxRunnerError):
+    """Raised when dependency resolution fails."""
+    pass
