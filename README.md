@@ -20,7 +20,11 @@ To install the project in editable mode:
 ```bash
 pip install -e .
 ```
+To run docs site:
 
+```bash
+npm run start
+```
 ### Running Tests
 To run the automated test suite:
 

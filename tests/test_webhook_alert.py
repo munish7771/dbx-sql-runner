@@ -5,7 +5,6 @@ from dbx_sql_runner.project import ProjectLoader
 from dbx_sql_runner.adapters.base import BaseAdapter
 from dbx_sql_runner.models import Model
 import json
-import urllib.request
 
 class MockAdapter(BaseAdapter):
     def get_metadata(self, catalog, schema):
