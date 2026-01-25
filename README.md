@@ -2,6 +2,8 @@
 
 A lightweight, library-first SQL transformation tool for Databricks SQL, inspired by DBT.
 
+📘 **Full Documentation:** [https://munish7771.github.io/dbx-sql-runner/](https://munish7771.github.io/dbx-sql-runner/)
+
 ## Features
 
 - **Simple SQL Models**: Just write `.sql` files. No complex boilerplate.

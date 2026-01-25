@@ -28,7 +28,7 @@ const FeatureList = [
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Comes with a built-in <strong>Linter</strong> (via Ruff) to enforce code quality and
+        Comes with a built-in <strong>Linter</strong> (via Ruff) to enforce code quality and{' '}
         <strong>Alerting</strong> webhooks to notify you of run status.
       </>
     ),
