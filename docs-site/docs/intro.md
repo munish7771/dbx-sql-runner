@@ -111,19 +111,20 @@ Create `.sql` files in your `models/` directory.
 - Use `{source_name}` to reference sources defined in `profiles.yml`.
 
 ```sql
--- name: my_table
+-- name: my_first_model
 -- materialized: table
--- partition_by: date, region
+-- partition_by: date
 
 /*
-    Multi-line comments are supported.
-    Refer to upstream models: {upstream_model}
-    Refer to sources: {my_source}
+    Welcome to your first dbx-sql-runner model!
+    
+    This is where you define your SQL logic.
+    You can refer to other models like this: {upstream_model_name}
+    Or refer to sources defined in profiles.yml like this: {my_source}
 */
 
 SELECT 
-    id,
-    amount
-FROM {source_view}
-WHERE id > 100
+    1 as id, 
+    current_date() as date, 
+    'Hello World' as message
 ```
