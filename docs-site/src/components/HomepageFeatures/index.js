@@ -4,42 +4,46 @@ import styles from './styles.module.css';
 
 const FeatureList = [
   {
-    title: 'Easy to Use',
+    title: 'Minimalist & SQL-First',
     Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Just write <code>.sql</code> files. No complex boilerplate or excessive configuration.
+        Designed for <strong>Databricks SQL</strong> where Unity Catalog already handles metadata and lineage.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
+    title: 'Library-First Design',
     Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Not just a CLI. Import <code>dbx_sql_runner</code> in your Python scripts.
+        Perfect for orchestrating transformations within <strong>Airflow</strong> or <strong>Databricks Jobs</strong>.
       </>
     ),
   },
   {
-    title: 'Powered by React',
+    title: 'Built-in Tooling',
     Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Comes with a built-in <strong>Linter</strong> (via Ruff) to enforce code quality and
+        <strong>Alerting</strong> webhooks to notify you of run status.
       </>
     ),
   },
 ];
 
-function Feature({Svg, title, description}) {
+function Feature({ Svg, title, description }) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
+        {typeof Svg === 'string' ? (
+          <img src={Svg} className={styles.featureSvg} role="img" alt={title} />
+        ) : (
+          <Svg className={styles.featureSvg} role="img" />
+        )}
       </div>
       <div className="text--center padding-horiz--md">
         <Heading as="h3">{title}</Heading>
