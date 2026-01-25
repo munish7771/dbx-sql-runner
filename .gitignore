@@ -1,0 +1,6 @@
+# Ignore everything
+*
+
+# Whitelist docs folders and config
+!docs-site/
+!.gitignore
