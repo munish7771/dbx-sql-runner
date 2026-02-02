@@ -61,7 +61,7 @@ class DbxRunner:
             last_hash = all_meta.get(model.name, {}).get("sql_hash")
             
             action = "EXECUTE"
-            if model.materialized == 'view' and last_hash == current_hash:
+            if model.materialized in ['view', 'ddl'] and last_hash == current_hash:
                 action = "SKIP"
             
             execution_plan.append({
@@ -72,8 +72,12 @@ class DbxRunner:
             })
             
             if action == "EXECUTE":
-                # Staging FQN: suffix with __staging
-                context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}__staging"
+                if model.materialized == 'ddl':
+                     # For DDL, we do not use staging logic at all. Execute directly.
+                     context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
+                else:
+                    # Staging FQN: suffix with __staging
+                    context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}__staging"
             else:
                 context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
 
@@ -121,8 +125,11 @@ class DbxRunner:
             try:
                 # Pass suffix-based FQN directly or let execute handle it?
                 # _execute_model logic needs update to handle FQN construction
-                staging_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
-                self._execute_model(model, context_map, staging_fqn)
+                if model.materialized == 'ddl':
+                     target_fqn = f"{self.catalog}.{self.schema}.{model.name}"
+                else:
+                     target_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
+                self._execute_model(model, context_map, target_fqn)
                 
                 duration = time.time() - start_time
                 self._log_end(current_idx, total_models, model, duration)
@@ -220,6 +227,9 @@ class DbxRunner:
         self.adapter.execute(ddl)
 
     def _promote_model(self, model: Model):
+        if model.materialized == 'ddl':
+            return
+
         fqn_target = f"{self.catalog}.{self.schema}.{model.name}"
         fqn_staging = f"{self.catalog}.{self.schema}.{model.name}__staging"
         
@@ -240,10 +250,7 @@ class DbxRunner:
             self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
         
         elif model.materialized == 'ddl':
-              try:
-                  self.adapter.execute(f"ALTER TABLE {fqn_staging} RENAME TO {fqn_target}")
-              except Exception as e:
-                  logger.warning(f"Warning: Could not rename DDL artifact {fqn_staging}. Error: {e}")
+              pass
 
     def _cleanup_staging(self, execution_plan: List[Dict]):
         # print("Cleaning up...") # staging artifacts...")
@@ -251,6 +258,8 @@ class DbxRunner:
             # We cleanup everything, skipped or not (though skipped won't exist usually)
             # Actually only need to cleanup things we executed.
             if item['action'] == "EXECUTE":
+                if item['model'].materialized == 'ddl':
+                     continue
                 fqn_staging = f"{self.catalog}.{self.schema}.{item['name']}__staging"
                 self._safe_drop_target(fqn_staging)
 
