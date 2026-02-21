@@ -23,171 +23,181 @@ class DbxRunner:
         # Staging schema removed; using suffixes instead
 
     def run(self, preview=False):
-        # Load and Sort Models
-        models = self.loader.load_models()
-        graph = DependencyGraph(models)
-        sorted_models = graph.get_execution_order()
-        
-        # Get Metadata / Context
-        all_meta = self.adapter.get_metadata(self.catalog, self.schema)
-        
-        # Generate Execution ID (Incremental)
-        execution_id = self.adapter.get_next_execution_id(self.catalog, self.schema)
-        
-        if not self.config.get('silent'):
-            logger.info(f"SQL RUNNER | Run Execution ID: {execution_id}")
-            logger.info(f"Found {len(sorted_models)} models")
+        try:
+            # Load and Sort Models
+            models = self.loader.load_models()
+            graph = DependencyGraph(models)
+            sorted_models = graph.get_execution_order()
+            
+            # Get Metadata / Context
+            all_meta = self.adapter.get_metadata(self.catalog, self.schema)
+            
+            # Generate Execution ID (Incremental)
+            execution_id = self.adapter.get_next_execution_id(self.catalog, self.schema)
+            
+            if not self.config.get('silent'):
+                logger.info(f"SQL RUNNER | Run Execution ID: {execution_id}")
+                logger.info(f"Found {len(sorted_models)} models")
 
-        # Plan Execution
-        execution_plan = []
-        context_map = {} # model_name -> fqn (target or staging)
-        
-        # Initialize context mapping with Configured Sources
-        # This allows {source_name} to be resolved to their configured FQN
-        context_map.update(self.sources)
+            # Plan Execution
+            execution_plan = []
+            context_map = {} # model_name -> fqn (target or staging)
+            
+            # Initialize context mapping with Configured Sources
+            # This allows {source_name} to be resolved to their configured FQN
+            context_map.update(self.sources)
 
-        model_map = {m.name: m for m in models}
+            model_map = {m.name: m for m in models}
 
-        # Need to iterate in sorted order to build context map
-        for model in sorted_models:
-             # Calculate generic hash (using target context)
-            target_context = {m: f"{self.catalog}.{self.schema}.{model_map[m].name}" for m in model_map}
-            # Add sources to target context as well
-            target_context.update(self.sources)
-            
-            current_sql_content = self._render_sql(model.sql, target_context)
-            current_hash = hashlib.sha256(current_sql_content.encode('utf-8')).hexdigest()
-            
-            last_hash = all_meta.get(model.name, {}).get("sql_hash")
-            
-            action = "EXECUTE"
-            if model.materialized == 'view' and last_hash == current_hash:
-                action = "SKIP"
-            
-            execution_plan.append({
-                "name": model.name,
-                "action": action,
-                "model": model,
-                "hash": current_hash
-            })
-            
-            if action == "EXECUTE":
-                # Staging FQN: suffix with __staging
-                context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}__staging"
-            else:
-                context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
+            # Need to iterate in sorted order to build context map
+            for model in sorted_models:
+                 # Calculate generic hash (using target context)
+                target_context = {m: f"{self.catalog}.{self.schema}.{model_map[m].name}" for m in model_map}
+                # Add sources to target context as well
+                target_context.update(self.sources)
+                
+                current_sql_content = self._render_sql(model.sql, target_context)
+                current_hash = hashlib.sha256(current_sql_content.encode('utf-8')).hexdigest()
+                
+                last_hash = all_meta.get(model.name, {}).get("sql_hash")
+                
+                action = "EXECUTE"
+                if model.materialized in ['view', 'ddl'] and last_hash == current_hash:
+                    action = "SKIP"
+                
+                execution_plan.append({
+                    "name": model.name,
+                    "action": action,
+                    "model": model,
+                    "hash": current_hash
+                })
+                
+                if action == "EXECUTE":
+                    if model.materialized == 'ddl':
+                         # For DDL, we do not use staging logic at all. Execute directly.
+                         context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
+                    else:
+                        # Staging FQN: suffix with __staging
+                        context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}__staging"
+                else:
+                    context_map[model.name] = f"{self.catalog}.{self.schema}.{model.name}"
 
-        # Print Plan
-        if not self.config.get('silent'):
-            logger.info("Execution Plan:")
+            # Print Plan
+            if not self.config.get('silent'):
+                logger.info("Execution Plan:")
+                for item in execution_plan:
+                    logger.info(f" - {item['name']}: {item['action']}")
+
+            if preview:
+                return
+
+            # Execute
+            results = {"PASS": 0, "WARN": 0, "ERROR": 0, "SKIP": 0}
+            model_status = {} # model_name -> status
+            
+            total_models = len([i for i in execution_plan if i['action'] == "EXECUTE"])
+            current_idx = 0
+            
             for item in execution_plan:
-                logger.info(f" - {item['name']}: {item['action']}")
-
-        if preview:
-            return
-
-        # Execute
-        results = {"PASS": 0, "WARN": 0, "ERROR": 0, "SKIP": 0}
-        model_status = {} # model_name -> status
-        
-        total_models = len([i for i in execution_plan if i['action'] == "EXECUTE"])
-        current_idx = 0
-        
-        for item in execution_plan:
-            model = item['model']
-            
-            if item['action'] == "SKIP":
-                model_status[model.name] = "SKIP"
-                results["SKIP"] += 1
-                continue
-            
-            # Check Upstream Dependencies
-            upstream_failed = False
-            for dep in model.depends_on:
-                if dep in model_status and model_status[dep] in ["ERROR", "SKIP_UPSTREAM"]:
-                    upstream_failed = True
-                    break
-            
-            if upstream_failed:
-                model_status[model.name] = "SKIP_UPSTREAM"
-                logger.info(f"Skipping {model.name} due to upstream failure")
-                results["SKIP"] += 1
-                continue
-
-            current_idx += 1
-            self._log_start(current_idx, total_models, model)
-            start_time = time.time()
-            
-            try:
-                # Pass suffix-based FQN directly or let execute handle it?
-                # _execute_model logic needs update to handle FQN construction
-                staging_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
-                self._execute_model(model, context_map, staging_fqn)
+                model = item['model']
                 
-                duration = time.time() - start_time
-                self._log_end(current_idx, total_models, model, duration)
-                model_status[model.name] = "SUCCESS"
-                results["PASS"] += 1
+                if item['action'] == "SKIP":
+                    model_status[model.name] = "SKIP"
+                    results["SKIP"] += 1
+                    continue
                 
-            except Exception as e:
-                logger.error(f"Error executing {model.name}: {e}")
-                model_status[model.name] = "ERROR"
-                results["ERROR"] += 1
-            
-        # Promote / Atomic Swap
-        # print("Promoting models...") 
-        for item in execution_plan:
-            model = item['model']
-            
-            # Only promote if SUCCESS (skip SKIPPED, ERROR, and originally SKIP)
-            if model_status.get(model.name) != "SUCCESS":
-                continue
+                # Check Upstream Dependencies
+                upstream_failed = False
+                for dep in model.depends_on:
+                    if dep in model_status and model_status[dep] in ["ERROR", "SKIP_UPSTREAM"]:
+                        upstream_failed = True
+                        break
+                
+                if upstream_failed:
+                    model_status[model.name] = "SKIP_UPSTREAM"
+                    logger.info(f"Skipping {model.name} due to upstream failure")
+                    results["SKIP"] += 1
+                    continue
 
-            try:
-                self._promote_model(model)
-                self.adapter.update_metadata(self.catalog, self.schema, model.name, item['hash'], model.materialized, execution_id)
-            except Exception as e:
-                logger.error(f"Error promoting {model.name}: {e}")
-                results["ERROR"] += 1 # Should we count promotion error as error? Yes.
-                # Adjust PASS count? Technically it executed but didn't promote.
-                # Let's just increment ERROR.
+                current_idx += 1
+                self._log_start(current_idx, total_models, model)
+                start_time = time.time()
+                
+                try:
+                    # Pass suffix-based FQN directly or let execute handle it?
+                    # _execute_model logic needs update to handle FQN construction
+                    if model.materialized == 'ddl':
+                         target_fqn = f"{self.catalog}.{self.schema}.{model.name}"
+                    else:
+                         target_fqn = f"{self.catalog}.{self.schema}.{model.name}__staging"
+                    self._execute_model(model, context_map, target_fqn)
+                    
+                    duration = time.time() - start_time
+                    self._log_end(current_idx, total_models, model, duration)
+                    model_status[model.name] = "SUCCESS"
+                    results["PASS"] += 1
+                    
+                except Exception as e:
+                    logger.error(f"Error executing {model.name}: {e}")
+                    model_status[model.name] = "ERROR"
+                    results["ERROR"] += 1
+                
+            # Promote / Atomic Swap
+            # print("Promoting models...") 
+            for item in execution_plan:
+                model = item['model']
+                
+                # Only promote if SUCCESS (skip SKIPPED, ERROR, and originally SKIP)
+                if model_status.get(model.name) != "SUCCESS":
+                    continue
 
-        # Cleanup
-        self._cleanup_staging(execution_plan)
-        logger.info(f"Done. PASS={results['PASS']} WARN={results['WARN']} ERROR={results['ERROR']} SKIP={results['SKIP']} TOTAL={results['PASS']+results['ERROR']+results['SKIP']}")
+                try:
+                    self._promote_model(model)
+                    self.adapter.update_metadata(self.catalog, self.schema, model.name, item['hash'], model.materialized, execution_id)
+                except Exception as e:
+                    logger.error(f"Error promoting {model.name}: {e}")
+                    results["ERROR"] += 1 # Should we count promotion error as error? Yes.
+                    # Adjust PASS count? Technically it executed but didn't promote.
+                    # Let's just increment ERROR.
 
-        self._send_webhook_alert(results, total_models, time.time() - start_time if 'start_time' in locals() else 0)
+            # Cleanup
+            self._cleanup_staging(execution_plan)
+            logger.info(f"Done. PASS={results['PASS']} WARN={results['WARN']} ERROR={results['ERROR']} SKIP={results['SKIP']} TOTAL={results['PASS']+results['ERROR']+results['SKIP']}")
+
+            self._send_webhook_alert(results, total_models, time.time() - start_time if 'start_time' in locals() else 0)
+
+        except Exception as e:
+            logger.error(f"Runtime Exception: {e}")
+            if not preview:
+                 self._send_runtime_error_alert(str(e))
+            raise e
 
     def _send_webhook_alert(self, results, total_models, duration):
         webhook_url = self.config.get('alert_webhook_url')
         if not webhook_url:
             return
 
-        payload = {
-            "environment": self.config.get('target_name', 'unknown'),
-            "total_models": total_models,
-            "run_stats": {
-                "executed": results['PASS'] + results['ERROR'],
-                "skipped": results['SKIP'],
-                "passed": results['PASS'],
-                "failed": results['ERROR']
-            },
-            "duration_seconds": round(duration, 2)
-        }
+        from .alerting import SlackAlert
+        alert = SlackAlert(webhook_url)
+        alert.send(
+            environment=self.config.get('target_name', 'unknown'),
+            results=results,
+            total_models=total_models,
+            duration=duration,
+            status_message=self.config.get('status_message') or self.config.get('alert_message', 'SQL Runner run finished')
+        )
 
-        try:
-            req = urllib.request.Request(
-                webhook_url, 
-                data=json.dumps(payload).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
-            )
-            with urllib.request.urlopen(req) as response:
-                if response.status >= 400:
-                    logger.warning(f"Failed to send webhook alert. Status: {response.status}")
-                else:
-                    logger.info("Webhook alert sent successfully.")
-        except Exception as e:
-            logger.warning(f"Failed to send webhook alert: {e}")
+    def _send_runtime_error_alert(self, error_message):
+        webhook_url = self.config.get('alert_webhook_url')
+        if not webhook_url:
+            return
+
+        from .alerting import SlackAlert
+        alert = SlackAlert(webhook_url)
+        alert.send_error(
+            environment=self.config.get('target_name', 'unknown'),
+            error_message=str(error_message)
+        )
 
     def _log_start(self, idx, total, model):
         # Timestamp handled by logging formatter

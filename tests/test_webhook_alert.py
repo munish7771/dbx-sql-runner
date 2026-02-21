@@ -57,10 +57,10 @@ class TestWebhookAlert(unittest.TestCase):
         
         payload = json.loads(req.data.decode('utf-8'))
         
-        self.assertEqual(payload['environment'], 'dev')
-        self.assertEqual(payload['run_stats']['passed'], 1)
-        self.assertEqual(payload['total_models'], 1)
-        self.assertIn('duration_seconds', payload)
+        self.assertIn('text', payload)
+        self.assertNotIn('blocks', payload)
+        
+        self.assertEqual(payload['text'], "SQL Runner run finished (dev): 1 Passed, 0 Skipped, 0 Failed.")
 
     @patch('urllib.request.urlopen')
     def test_no_alert_configured(self, mock_urlopen):

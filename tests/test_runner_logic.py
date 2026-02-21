@@ -113,8 +113,8 @@ class TestRunnerLogic(unittest.TestCase):
         
         self.runner.run()
         
-        # Verify SQL executed contains the staging FQN
-        expected_fqn = "cat.sch.ddl_model__staging"
+        # Verify SQL executed contains the TARGET FQN (no staging)
+        expected_fqn = "cat.sch.ddl_model"
         expected_sql = f"CREATE TABLE {expected_fqn} (id int)"
         
         executed_sqls = self.adapter.executed_sql
