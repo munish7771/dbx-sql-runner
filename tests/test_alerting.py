@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from dbx_sql_runner.alerting import SlackAlert
 import json
 

@@ -3,8 +3,6 @@ import re
 from typing import Dict, Any, List
 import time
 import logging
-import urllib.request
-import json
 from .models import Model
 from .adapters.base import BaseAdapter
 from .project import ProjectLoader, DependencyGraph

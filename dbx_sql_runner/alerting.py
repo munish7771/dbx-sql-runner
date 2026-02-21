@@ -17,9 +17,6 @@ class SlackAlert:
         passed = results.get('PASS', 0)
         failed = results.get('ERROR', 0)
         skipped = results.get('SKIP', 0)
-        executed = passed + failed
-        duration_s = round(duration, 2)
-
         # Construct Slack Payload (Simple Text)
         message = f"{status_message} ({environment}): {passed} Passed, {skipped} Skipped, {failed} Failed."
         
