@@ -32,8 +32,26 @@ class ProjectLinter:
         self.project_dir = os.path.abspath(project_dir)
         self.config_file = os.path.join(self.project_dir, config_file)
         self.config = self._load_config()
-        self.loader = ProjectLoader(os.path.join(self.project_dir, "models"))
         self.errors = []
+        
+        # Load model_paths from profiles.yml if available
+        profile_path = os.path.join(self.project_dir, "profiles.yml")
+        model_paths = []
+        if os.path.exists(profile_path):
+            try:
+                profile_config = load_config_from_yaml(profile_path)
+                model_paths = profile_config.get("model_paths", [])
+            except Exception:
+                pass
+                
+        # Fallback for linter (if profiles.yml has no model_paths or is missing)
+        if not model_paths:
+            model_paths = ["models"]
+            
+        # Ensure paths are relative to project_dir
+        abs_model_paths = [os.path.join(self.project_dir, p) for p in model_paths]
+        
+        self.loader = ProjectLoader(model_paths=abs_model_paths)
 
     def _load_config(self) -> Dict[str, Any]:
         config = DEFAULT_CONFIG.copy()
