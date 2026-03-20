@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 
+
 class BaseAdapter(ABC):
     @abstractmethod
     def execute(self, sql: str) -> None:
@@ -16,7 +17,15 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def update_metadata(self, catalog: str, schema: str, model_name: str, sql_hash: str, materialized: str, execution_id: int) -> None:
+    def update_metadata(
+        self,
+        catalog: str,
+        schema: str,
+        model_name: str,
+        sql_hash: str,
+        materialized: str,
+        execution_id: int,
+    ) -> None:
         pass
 
     @abstractmethod

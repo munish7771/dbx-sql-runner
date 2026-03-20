@@ -13,6 +13,8 @@ outputs:
     access_token: "${DBX_TOKEN_DEV}"
     catalog: "my_catalog_dev"
     schema: "my_schema_dev"
+    model_paths:
+      - "models/"
     sources:
       my_source: "prod_catalog.schema.table"
     # alert_webhook_url: "https://your.webhook.url"
@@ -23,6 +25,8 @@ outputs:
     access_token: "${DBX_TOKEN_PROD}"
     catalog: "my_catalog_prod"
     schema: "my_schema_prod"
+    model_paths:
+      - "models/"
     # alert_webhook_url: "https://your.webhook.url"
 """.strip()
 
@@ -88,25 +92,27 @@ rules:
     message: "Column names must be snake_case (lowercase, numbers, underscores)"
 """.strip()
 
+
 def create_file(path, content):
     with open(path, "w") as f:
         f.write(content)
     logger.info(f"Created {path}")
 
+
 def init_project(project_name="."):
     """
     Initializes a new dbx-sql-runner project.
-    
+
     Args:
-        project_name (str): The name of the directory to create. 
+        project_name (str): The name of the directory to create.
                             If ".", initializes in current directory.
     """
     base_dir = os.path.abspath(project_name)
-    
+
     if project_name != "." and not os.path.exists(base_dir):
         os.makedirs(base_dir)
         logger.info(f"Created directory {base_dir}")
-    
+
     models_dir = os.path.join(base_dir, "models")
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
@@ -117,7 +123,7 @@ def init_project(project_name="."):
     create_file(os.path.join(base_dir, ".gitignore"), GITIGNORE_TEMPLATE)
     create_file(os.path.join(base_dir, "lint.yml"), LINTER_CONFIG_TEMPLATE)
     create_file(os.path.join(models_dir, "example.sql"), EXAMPLE_SQL_TEMPLATE)
-    
+
     # Only create README if we are creating a new folder, or if it doesn't exist
     readme_path = os.path.join(base_dir, "README.md")
     if not os.path.exists(readme_path):
