@@ -1,7 +1,7 @@
 import json
 import logging
 import urllib.request
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ class SlackAlert:
         total_models: int,
         duration: float,
         status_message: str = "SQL Runner run finished",
+        failed_models: List[str] = None,
+        passed_models: List[str] = None,
     ):
         if not self.webhook_url:
             logger.warning("No webhook URL provided for Slack alert.")
@@ -27,6 +29,12 @@ class SlackAlert:
         skipped = results.get("SKIP", 0)
         # Construct Slack Payload (Simple Text)
         message = f"{status_message} ({environment}): {passed} Passed, {skipped} Skipped, {failed} Failed."
+
+        if failed_models:
+            message += f"\nFailed models: {', '.join(failed_models)}"
+
+        if passed_models:
+            message += f"\nPassed models: {', '.join(passed_models)}"
 
         payload = {"text": message}
 

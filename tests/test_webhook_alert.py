@@ -74,7 +74,7 @@ class TestWebhookAlert(unittest.TestCase):
 
         self.assertEqual(
             payload["text"],
-            "SQL Runner run finished (dev): 1 Passed, 0 Skipped, 0 Failed.",
+            "SQL Runner run finished (dev): 1 Passed, 0 Skipped, 0 Failed.\nPassed models: model1",
         )
 
     @patch("urllib.request.urlopen")

@@ -201,6 +201,7 @@ class DbxRunner:
                 results,
                 total_models,
                 time.time() - start_time if "start_time" in locals() else 0,
+                model_status,
             )
 
         except Exception as e:
@@ -209,12 +210,23 @@ class DbxRunner:
                 self._send_runtime_error_alert(str(e))
             raise e
 
-    def _send_webhook_alert(self, results, total_models, duration):
+    def _send_webhook_alert(self, results, total_models, duration, model_status=None):
         webhook_url = self.config.get("alert_webhook_url")
         if not webhook_url:
             return
 
         from .alerting import SlackAlert
+
+        failed_models = []
+        passed_models = []
+
+        if model_status:
+            failed_models = [
+                name for name, status in model_status.items() if status == "ERROR"
+            ]
+            passed_models = [
+                name for name, status in model_status.items() if status == "SUCCESS"
+            ]
 
         alert = SlackAlert(webhook_url)
         alert.send(
@@ -224,6 +236,8 @@ class DbxRunner:
             duration=duration,
             status_message=self.config.get("status_message")
             or self.config.get("alert_message", "SQL Runner run finished"),
+            failed_models=failed_models,
+            passed_models=passed_models,
         )
 
     def _send_runtime_error_alert(self, error_message):

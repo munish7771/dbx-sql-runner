@@ -15,8 +15,18 @@ class TestSlackAlert(unittest.TestCase):
         duration = 10.5
         environment = "prod"
         status_message = "Custom Run Message"
+        failed_models = ["failed_model"]
+        passed_models = ["model1", "model2", "model3", "model4", "model5"]
 
-        alert.send(environment, results, total_models, duration, status_message)
+        alert.send(
+            environment,
+            results,
+            total_models,
+            duration,
+            status_message,
+            failed_models,
+            passed_models,
+        )
 
         self.assertTrue(mock_urlopen.called)
         args, kwargs = mock_urlopen.call_args
@@ -25,7 +35,8 @@ class TestSlackAlert(unittest.TestCase):
         payload = json.loads(req.data.decode("utf-8"))
 
         self.assertEqual(
-            payload["text"], "Custom Run Message (prod): 5 Passed, 2 Skipped, 1 Failed."
+            payload["text"],
+            "Custom Run Message (prod): 5 Passed, 2 Skipped, 1 Failed.\nFailed models: failed_model\nPassed models: model1, model2, model3, model4, model5",
         )
         self.assertNotIn("blocks", payload)
 
